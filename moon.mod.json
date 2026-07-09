@@ -1,0 +1,11 @@
+{
+  "name": "linzeming/template",
+  "version": "0.1.0",
+  "readme": "README.md",
+  "repository": "https://github.com/lin2077-zeming/MoonbitProject",
+  "license": "MIT",
+  "keywords": ["template", "templating", "jinja2", "tera", "html", "engine"],
+  "description": "A Jinja2/Tera-inspired template rendering engine for MoonBit",
+  "source": "src",
+  "deps": {}
+}
