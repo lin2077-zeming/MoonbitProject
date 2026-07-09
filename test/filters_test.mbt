@@ -245,3 +245,123 @@ test "filter in for loop body" {
   )
   @prelude.assert_eq!(result, "ABC")
 }
+
+// =============================================================================
+// 6. Edge cases — empty values
+// =============================================================================
+
+test "filter upper on empty string" {
+  let ctx = @tpl.Context::new().set("name", @tpl.Value::Str(""))
+  let result = render_with("{{ name | upper }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "filter capitalize on empty string" {
+  let ctx = @tpl.Context::new().set("name", @tpl.Value::Str(""))
+  let result = render_with("{{ name | capitalize }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "filter reverse on empty string" {
+  let ctx = @tpl.Context::new().set("name", @tpl.Value::Str(""))
+  let result = render_with("{{ name | reverse }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "filter first on empty string" {
+  let ctx = @tpl.Context::new().set("name", @tpl.Value::Str(""))
+  let result = render_with("{{ name | first }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "filter last on empty string" {
+  let ctx = @tpl.Context::new().set("name", @tpl.Value::Str(""))
+  let result = render_with("{{ name | last }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "filter length on empty array" {
+  let ctx = @tpl.Context::new().set("items", @tpl.Value::Array([]))
+  let result = render_with("{{ items | length }}", ctx)
+  @prelude.assert_eq!(result, "0")
+}
+
+test "filter join on empty array" {
+  let ctx = @tpl.Context::new().set("items", @tpl.Value::Array([]))
+  let result = render_with("{{ items | join(', ') }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "filter first on empty array" {
+  let ctx = @tpl.Context::new().set("items", @tpl.Value::Array([]))
+  let result = render_with("{{ items | first }}", ctx)
+  @prelude.assert_eq!(result, "[]")
+}
+
+test "filter last on empty array" {
+  let ctx = @tpl.Context::new().set("items", @tpl.Value::Array([]))
+  let result = render_with("{{ items | last }}", ctx)
+  @prelude.assert_eq!(result, "[]")
+}
+
+// =============================================================================
+// 7. Edge cases — single character / element
+// =============================================================================
+
+test "filter capitalize single char" {
+  let ctx = @tpl.Context::new().set("c", @tpl.Value::Str("a"))
+  let result = render_with("{{ c | capitalize }}", ctx)
+  @prelude.assert_eq!(result, "A")
+}
+
+test "filter reverse single char" {
+  let ctx = @tpl.Context::new().set("c", @tpl.Value::Str("a"))
+  let result = render_with("{{ c | reverse }}", ctx)
+  @prelude.assert_eq!(result, "a")
+}
+
+test "filter first single element array" {
+  let ctx = @tpl.Context::new().set("items", @tpl.Value::Array([@tpl.Value::Str("only")]))
+  let result = render_with("{{ items | first }}", ctx)
+  @prelude.assert_eq!(result, "only")
+}
+
+// =============================================================================
+// 8. Error cases
+// =============================================================================
+
+test "filter upper on non-string" {
+  let ctx = @tpl.Context::new().set("num", @tpl.Value::Int(42L))
+  let tpl = @tpl.Template::parse("{{ num | upper }}")
+  match tpl {
+    Ok(t) => match t.render(ctx) {
+      Ok(_) => @prelude.assert_false!(true)
+      Err(_) => @prelude.assert_true!(true)
+    }
+    Err(_) => @prelude.fail("parse failed")
+  }
+}
+
+test "filter join on non-array" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Str("hello"))
+  let tpl = @tpl.Template::parse("{{ x | join(',') }}")
+  match tpl {
+    Ok(t) => match t.render(ctx) {
+      Ok(_) => @prelude.assert_false!(true)
+      Err(_) => @prelude.assert_true!(true)
+    }
+    Err(_) => @prelude.fail("parse failed")
+  }
+}
+
+test "unknown filter" {
+  let ctx = @tpl.Context::new().set("name", @tpl.Value::Str("hello"))
+  let tpl = @tpl.Template::parse("{{ name | nonexistent_filter }}")
+  match tpl {
+    Ok(t) => match t.render(ctx) {
+      Ok(_) => @prelude.assert_false!(true)
+      Err(_) => @prelude.assert_true!(true)
+    }
+    Err(_) => @prelude.fail("parse failed")
+  }
+}

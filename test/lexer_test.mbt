@@ -22,6 +22,7 @@ fn kinds(tokens : Array[@tpl.Token]) -> Array[@tpl.TokenKind] {
     }
   }
   arr
+
 }
 
 /// Helper: get the first (non-Eof) token kind.
@@ -342,4 +343,128 @@ test "identifier is keyword in block mode" {
   let tokens = tok("{% if %}")
   let ks = kinds(tokens)
   inspect!(ks, content="[OpenTag, If, CloseTag]")
+}
+
+// =============================================================================
+// 12. Edge cases — numbers
+// =============================================================================
+
+test "negative integer literal" {
+  let tokens = tok("{{ -42 }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Minus, Int(42), CloseVar]")
+}
+
+test "float with decimal only" {
+  let tokens = tok("{{ .5 }}")
+  let ks = kinds(tokens)
+  // .5 is parsed as Dot + Int(5) by expression parser; lexer sees it as Dot, Int
+  inspect!(ks, content="[OpenVar, Dot, Int(5), CloseVar]")
+}
+
+test "large integer" {
+  let tokens = tok("{{ 9999999999 }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Int(9999999999), CloseVar]")
+}
+
+// =============================================================================
+// 13. Edge cases — strings
+// =============================================================================
+
+test "string with escaped quote" {
+  let tokens = tok("{{ \"hello \\\"world\\\"\" }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Str(hello \\\"world\\\"), CloseVar]")
+}
+
+test "single quoted string with double quote inside" {
+  let tokens = tok("{{ 'it\\'s fine' }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Str(it\\'s fine), CloseVar]")
+}
+
+// =============================================================================
+// 14. Edge cases — operators
+// =============================================================================
+
+test "all comparison operators" {
+  let tokens = tok("{{ a == b }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(a), Eq, Ident(b), CloseVar]")
+}
+
+test "not equals operator" {
+  let tokens = tok("{{ a != b }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(a), NotEq, Ident(b), CloseVar]")
+}
+
+test "less than or equal" {
+  let tokens = tok("{{ a <= b }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(a), LtEq, Ident(b), CloseVar]")
+}
+
+test "greater than or equal" {
+  let tokens = tok("{{ a >= b }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(a), GtEq, Ident(b), CloseVar]")
+}
+
+test "and or not operators" {
+  let tokens = tok("{{ a and b or not c }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(a), And, Ident(b), Or, Not, Ident(c), CloseVar]")
+}
+
+// =============================================================================
+// 15. Edge cases — multiline
+// =============================================================================
+
+test "multiline template" {
+  let tokens = tok("line1\n{{ x }}\nline3")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[Text(line1\n), OpenVar, Ident(x), CloseVar, Text(\nline3)]")
+}
+
+test "block tag with newlines inside" {
+  let tokens = tok("{% if\nx\n%}body{% endif %}")
+  // The lexer should tokenize across newlines inside tags
+  let ks = kinds(tokens)
+  @prelude.assert!(ks.length() > 0)
+}
+
+// =============================================================================
+// 16. Edge cases — nested and unusual tags
+// =============================================================================
+
+test "consecutive tags no space" {
+  let tokens = tok("{{ a }}{{ b }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(a), CloseVar, OpenVar, Ident(b), CloseVar]")
+}
+
+test "tag at end of input" {
+  let tokens = tok("text{{ x }}")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[Text(text), OpenVar, Ident(x), CloseVar]")
+}
+
+test "tag at start of input" {
+  let tokens = tok("{{ x }}text")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[OpenVar, Ident(x), CloseVar, Text(text)]")
+}
+
+test "only tags no text" {
+  let tokens = tok("{{ a }}{% if b %}{{ c }}{% endif %}")
+  let ks = kinds(tokens)
+  @prelude.assert!(ks.length() > 4)
+}
+
+test "lone brace in text" {
+  let tokens = tok("a { b } c")
+  let ks = kinds(tokens)
+  inspect!(ks, content="[Text(a { b } c)]")
 }

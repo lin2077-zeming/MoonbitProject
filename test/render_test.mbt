@@ -367,3 +367,108 @@ test "render for loop with surrounding text" {
   let result = render_with("<ul>{% for x in items %}<li>{{ x }}</li>{% endfor %}</ul>", ctx)
   @prelude.assert_eq!(result, "<ul><li>a</li><li>b</li></ul>")
 }
+
+// =============================================================================
+// 7. Complex mixed templates
+// =============================================================================
+
+test "render complex: text + variable + if + for" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Int(1L),
+    @tpl.Value::Int(2L),
+    @tpl.Value::Int(3L),
+  ])
+  let ctx = @tpl.Context::new()
+    .set("title", @tpl.Value::Str("Numbers"))
+    .set("items", items)
+    .set("show_count", @tpl.Value::Bool(true))
+  let result = render_with(
+    "<h1>{{ title }}</h1>" +
+    "{% if show_count %}<p>Total: {{ items | length }}</p>{% endif %}" +
+    "<ul>{% for n in items %}<li>{{ n }}</li>{% endfor %}</ul>",
+    ctx,
+  )
+  @prelude.assert!(result.contains("<h1>Numbers</h1>"))
+  @prelude.assert!(result.contains("<p>Total: 3</p>"))
+  @prelude.assert!(result.contains("<li>1</li>"))
+}
+
+test "render nested for and if" {
+  let ctx = @tpl.Context::new()
+    .set("outer", @tpl.Value::Array([
+      @tpl.Value::Array([@tpl.Value::Int(1L)]),
+      @tpl.Value::Array([]),
+      @tpl.Value::Array([@tpl.Value::Int(2L), @tpl.Value::Int(3L)]),
+    ]))
+  let result = render_with(
+    "{% for row in outer %}[{% for cell in row %}{{ cell }}{% endfor %}]{% endfor %}",
+    ctx,
+  )
+  @prelude.assert!(result.contains("[1]"))
+  @prelude.assert!(result.contains("[]"))
+  @prelude.assert!(result.contains("[23]"))
+}
+
+test "render macro with if in loop" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Int(1L),
+    @tpl.Value::Int(2L),
+    @tpl.Value::Int(3L),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with(
+    "{% macro even(n) %}{% if n % 2 == 0 %}{{ n }}{% endif %}{% endmacro %}" +
+    "{% for x in items %}{{ even(x) }}{% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "2")
+}
+
+test "render deep nesting if" {
+  let ctx = @tpl.Context::new()
+    .set("a", @tpl.Value::Bool(true))
+    .set("b", @tpl.Value::Bool(true))
+    .set("c", @tpl.Value::Bool(true))
+  let result = render_with(
+    "{% if a %}A{% if b %}B{% if c %}C{% endif %}{% endif %}{% endif %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "ABC")
+}
+
+test "render deep nesting if false" {
+  let ctx = @tpl.Context::new()
+    .set("a", @tpl.Value::Bool(true))
+    .set("b", @tpl.Value::Bool(false))
+    .set("c", @tpl.Value::Bool(true))
+  let result = render_with(
+    "{% if a %}A{% if b %}B{% if c %}C{% endif %}{% endif %}{% endif %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "A")
+}
+
+test "render multiple filters on variable in for loop" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("  hello  "),
+    @tpl.Value::Str("  WORLD  "),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with(
+    "{% for x in items %}{{ x | trim | capitalize }}{% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "HelloWorld")
+}
+
+test "render boolean output" {
+  let ctx = @tpl.Context::new().set("flag", @tpl.Value::Bool(true))
+  let result = render_with("{{ flag }}", ctx)
+  @prelude.assert_eq!(result, "true")
+}
+
+test "render null output" {
+  let ctx = @tpl.Context::new().set("nothing", @tpl.Value::Null)
+  let result = render_with("{{ nothing }}", ctx)
+  @prelude.assert_eq!(result, "null")
+}

@@ -308,6 +308,153 @@ test "eval nested context get from root" {
 }
 
 // =============================================================================
+// 8a. All arithmetic operations
+// =============================================================================
+
+test "eval add int int" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(10L), @tpl.BinOpKind::Add, int_expr(5L)))
+  @prelude.assert_eq!(v, @tpl.Value::Int(15L))
+}
+
+test "eval add float float" {
+  let v = eval_expr(@tpl.Expr::BinOp(float_expr(1.5), @tpl.BinOpKind::Add, float_expr(2.5)))
+  @prelude.assert_eq!(v, @tpl.Value::Float(4.0))
+}
+
+test "eval sub int" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(10L), @tpl.BinOpKind::Sub, int_expr(3L)))
+  @prelude.assert_eq!(v, @tpl.Value::Int(7L))
+}
+
+test "eval sub float" {
+  let v = eval_expr(@tpl.Expr::BinOp(float_expr(5.0), @tpl.BinOpKind::Sub, float_expr(1.5)))
+  @prelude.assert_eq!(v, @tpl.Value::Float(3.5))
+}
+
+test "eval mul int" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(4L), @tpl.BinOpKind::Mul, int_expr(3L)))
+  @prelude.assert_eq!(v, @tpl.Value::Int(12L))
+}
+
+test "eval div int" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(10L), @tpl.BinOpKind::Div, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Int(5L))
+}
+
+test "eval mod int" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(10L), @tpl.BinOpKind::Mod, int_expr(3L)))
+  @prelude.assert_eq!(v, @tpl.Value::Int(1L))
+}
+
+// =============================================================================
+// 8b. Comparison operations
+// =============================================================================
+
+test "eval eq int true" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(1L), @tpl.BinOpKind::Eq, int_expr(1L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval eq int false" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(1L), @tpl.BinOpKind::Eq, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(false))
+}
+
+test "eval neq true" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(1L), @tpl.BinOpKind::Neq, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval lt true" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(1L), @tpl.BinOpKind::Lt, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval lt false" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(3L), @tpl.BinOpKind::Lt, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(false))
+}
+
+test "eval gt true" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(3L), @tpl.BinOpKind::Gt, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval le true" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(2L), @tpl.BinOpKind::Le, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval ge true" {
+  let v = eval_expr(@tpl.Expr::BinOp(int_expr(2L), @tpl.BinOpKind::Ge, int_expr(2L)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval eq strings" {
+  let v = eval_expr(@tpl.Expr::BinOp(str_expr("abc"), @tpl.BinOpKind::Eq, str_expr("abc")))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+test "eval eq strings false" {
+  let v = eval_expr(@tpl.Expr::BinOp(str_expr("abc"), @tpl.BinOpKind::Eq, str_expr("xyz")))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(false))
+}
+
+// =============================================================================
+// 8c. Short-circuit evaluation
+// =============================================================================
+
+test "eval and short circuit false" {
+  // false and (error) should not evaluate the rhs
+  let v = eval_expr(@tpl.Expr::BinOp(bool_expr(false), @tpl.BinOpKind::And, bool_expr(true)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(false))
+}
+
+test "eval or short circuit true" {
+  // true or (error) should not evaluate the rhs
+  let v = eval_expr(@tpl.Expr::BinOp(bool_expr(true), @tpl.BinOpKind::Or, bool_expr(false)))
+  @prelude.assert_eq!(v, @tpl.Value::Bool(true))
+}
+
+// =============================================================================
+// 8d. Type mismatch errors
+// =============================================================================
+
+test "eval error: add int and null" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Null)
+  let ev = @tpl.Evaluator::new(ctx)
+  let expr = @tpl.Expr::BinOp(
+    @tpl.Expr::Variable("x"),
+    @tpl.BinOpKind::Add,
+    int_expr(1L),
+  )
+  match ev.eval(expr) {
+    Ok(_) => @prelude.assert_false!(true)
+    Err(_) => @prelude.assert_true!(true)
+  }
+}
+
+test "eval error: negate string" {
+  let ctx = @tpl.Context::new().set("s", @tpl.Value::Str("hello"))
+  let ev = @tpl.Evaluator::new(ctx)
+  let expr = @tpl.Expr::UnaryOp(@tpl.UnaryOpKind::Neg, @tpl.Expr::Variable("s"))
+  match ev.eval(expr) {
+    Ok(_) => @prelude.assert_false!(true)
+    Err(_) => @prelude.assert_true!(true)
+  }
+}
+
+test "eval error: index string with float" {
+  let ctx = @tpl.Context::new().set("s", @tpl.Value::Str("hello"))
+  let ev = @tpl.Evaluator::new(ctx)
+  let expr = @tpl.Expr::Index(@tpl.Expr::Variable("s"), float_expr(1.0))
+  match ev.eval(expr) {
+    Ok(_) => @prelude.assert_false!(true)
+    Err(_) => @prelude.assert_true!(true)
+  }
+}
+
+// =============================================================================
 // 9. Expression parser (basic)
 // =============================================================================
 
