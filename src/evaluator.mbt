@@ -223,14 +223,26 @@ fn eval_index(container : Value, index : Value) -> Result[Value, String] {
 
 pub(all) struct Evaluator {
   ctx : Context
-} derive(Debug)
+  filters : FilterRegistry
+}
 
 // ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
 
 pub fn Evaluator::new(ctx : Context) -> Evaluator {
-  { ctx: ctx }
+  {
+    ctx: ctx,
+    filters: FilterRegistry::default(),
+  }
+}
+
+/// Create an evaluator with a specific filter registry.
+pub fn Evaluator::new_with_filters(
+  ctx : Context,
+  filters : FilterRegistry
+) -> Evaluator {
+  { ctx: ctx, filters: filters }
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +341,25 @@ pub fn Evaluator::eval(self : Evaluator, expr : Expr) -> Result[Value, String] {
       }
     }
 
-    Filter(base, _filter_name, _args) => self.eval(base)
+    // -- Filter ------------------------------------------------------------
+    Filter(base, filter_name, args) => {
+      let base_val = match self.eval(base) {
+        Ok(v) => v
+        Err(msg) => return Err(msg)
+      }
+      let eval_args : Array[Value] = Array::new()
+      for arg in args {
+        let arg_val = match self.eval(arg) {
+          Ok(v) => v
+          Err(msg) => return Err(msg)
+        }
+        eval_args.push(arg_val)
+      }
+      let filter_fn = match self.filters.lookup(filter_name) {
+        Some(f) => f
+        None => return Err("Unknown filter: " + filter_name)
+      }
+      filter_fn(base_val, eval_args)
+    }
   }
 }

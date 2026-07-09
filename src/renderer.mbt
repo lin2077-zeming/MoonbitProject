@@ -15,7 +15,7 @@
 pub(all) struct Renderer {
   evaluator : Evaluator
   output : StringBuilder
-} derive(Debug)
+}
 
 // ---------------------------------------------------------------------------
 // Constructor

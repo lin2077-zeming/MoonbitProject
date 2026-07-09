@@ -487,7 +487,7 @@ fn parse_arg_list(
   Err("unreachable")
 }
 
-/// Parse filter arguments: optional `(arg1, arg2, ...)` after filter name.
+/// Parse filter arguments: optional `(arg1, arg2, ...)` or `:arg` after filter name.
 fn parse_filter_args(p : Parser) -> Result[(Array[Expr], Parser), String] {
   let tok_opt = p.peek()
   match tok_opt {
@@ -495,6 +495,18 @@ fn parse_filter_args(p : Parser) -> Result[(Array[Expr], Parser), String] {
       if tok.kind == TokenKind::LParen {
         let (_, p2) = p.advance()
         parse_arg_list(p2, TokenKind::RParen)
+      } else if tok.kind == TokenKind::Colon {
+        // Colon syntax: consume ':' then parse a single argument.
+        let (_, p2) = p.advance()
+        let arg_result = p2.parse_expression(0)
+        match arg_result {
+          Ok((arg, p3)) => {
+            let args : Array[Expr] = Array::new()
+            args.push(arg)
+            Ok((args, p3))
+          }
+          Err(msg) => Err(msg)
+        }
       } else {
         Ok((Array::new(), p))
       }
