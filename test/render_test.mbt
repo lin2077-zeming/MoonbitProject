@@ -257,11 +257,113 @@ test "render if with truthy int" {
 }
 
 // =============================================================================
-// 6. Blocks that are still skipped
+// 6. For loops
 // =============================================================================
 
-test "render with skipped for block" {
-  let ctx = @tpl.Context::new()
-  let result = render_with("start{% for x in items %}{{ x }}{% endfor %}end", ctx)
-  @prelude.assert_eq!(result, "startend")
+test "render simple for loop" {
+  let nums = @tpl.Value::Array([
+    @tpl.Value::Int(1L),
+    @tpl.Value::Int(2L),
+    @tpl.Value::Int(3L),
+  ])
+  let ctx = @tpl.Context::new().set("nums", nums)
+  let result = render_with("{% for n in nums %}{{ n }},{% endfor %}", ctx)
+  @prelude.assert_eq!(result, "1,2,3,")
+}
+
+test "render empty for loop" {
+  let empty : Array[@tpl.Value] = []
+  let ctx = @tpl.Context::new().set("nums", @tpl.Value::Array(empty))
+  let result = render_with("{% for n in nums %}{{ n }}{% endfor %}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "render for loop with loop.index" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("a"),
+    @tpl.Value::Str("b"),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with(
+    "{% for x in items %}{{ loop.index }}:{{ x }} {% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "1:a 2:b ")
+}
+
+test "render for loop with loop.first" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("a"),
+    @tpl.Value::Str("b"),
+    @tpl.Value::Str("c"),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with(
+    "{% for x in items %}{% if loop.first %}[{% endif %}{{ x }}{% if loop.last %}]{% else %}, {% endif %}{% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "[a, b, c]")
+}
+
+test "render for loop with loop.last" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("x"),
+    @tpl.Value::Str("y"),
+    @tpl.Value::Str("z"),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with(
+    "{% for v in items %}{{ v }}{% if not loop.last %}|{% endif %}{% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "x|y|z")
+}
+
+test "render for loop with loop.index0" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("zero"),
+    @tpl.Value::Str("one"),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with(
+    "{% for x in items %}{{ loop.index0 }}:{{ x }} {% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "0:zero 1:one ")
+}
+
+test "render for loop with loop.length" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("x"),
+    @tpl.Value::Str("y"),
+    @tpl.Value::Str("z"),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with("{{ loop.length }}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "render for loop with if inside" {
+  let nums = @tpl.Value::Array([
+    @tpl.Value::Int(1L),
+    @tpl.Value::Int(2L),
+    @tpl.Value::Int(3L),
+    @tpl.Value::Int(4L),
+  ])
+  let ctx = @tpl.Context::new().set("nums", nums)
+  let result = render_with(
+    "{% for n in nums %}{% if n > 2 %}{{ n }}{% endif %}{% endfor %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "34")
+}
+
+test "render for loop with surrounding text" {
+  let items = @tpl.Value::Array([
+    @tpl.Value::Str("a"),
+    @tpl.Value::Str("b"),
+  ])
+  let ctx = @tpl.Context::new().set("items", items)
+  let result = render_with("<ul>{% for x in items %}<li>{{ x }}</li>{% endfor %}</ul>", ctx)
+  @prelude.assert_eq!(result, "<ul><li>a</li><li>b</li></ul>")
 }

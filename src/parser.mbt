@@ -674,6 +674,15 @@ fn dispatch_block_tag(
       }
     }
 
+    // -- for block ---------------------------------------------------------
+    TokenKind::For => {
+      let parsed = parse_for_block(p)
+      match parsed {
+        Ok((for_node, p2)) => Ok((Some(for_node), p2))
+        Err(msg) => Err(msg)
+      }
+    }
+
     // -- Elif / Else / Endif appearing outside if block — error ----------
     TokenKind::Elif => Err("Unexpected 'elif' outside of if block")
     TokenKind::Else => Err("Unexpected 'else' outside of if block")
@@ -897,6 +906,96 @@ fn parse_elif_else_chain(
   }
 
   Ok((elif_branches, else_body, pp))
+}
+
+// ---------------------------------------------------------------------------
+// For-block parser
+// ---------------------------------------------------------------------------
+
+/// Parse a full `{% for var in expr %} ... {% endfor %}`.
+///
+/// Caller has already consumed `OpenTag`.  We consume `For` and everything
+/// through `Endfor` + `CloseTag`.
+fn parse_for_block(p : Parser) -> Result[(Node, Parser), String] {
+  // 1. Consume 'for' keyword.
+  let (_, p1) = p.advance()
+
+  // 2. Read loop variable name (Ident).
+  let (var_tok, p2) = p1.advance()
+  let loop_var = match var_tok {
+    Some(t) => match t.kind {
+      TokenKind::Ident(n) => n
+      _ => return Err("Expected loop variable name after 'for'")
+    }
+    None => return Err("Expected loop variable name after 'for', got EOF")
+  }
+
+  // 3. Expect 'in' keyword.
+  let in_result = p2.expect(
+    fn(t : Token) -> Bool { t.kind == TokenKind::In },
+    "Expected 'in' after loop variable",
+  )
+  let p3 = match in_result {
+    Ok((_, pp)) => pp
+    Err(msg) => return Err(msg)
+  }
+
+  // 4. Parse iterable expression.
+  let expr_result = p3.parse_expression(0)
+  let (iterable, p4) = match expr_result {
+    Ok((e, pp)) => (e, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  // 5. Expect CloseTag.
+  let close_result = p4.expect(
+    fn(t : Token) -> Bool { t.kind == TokenKind::CloseTag },
+    "Expected '%}' after 'for' expression",
+  )
+  let p5 = match close_result {
+    Ok((_, pp)) => pp
+    Err(msg) => return Err(msg)
+  }
+
+  // 6. Parse loop body until Endfor.
+  let stop_kinds : Array[TokenKind] = [TokenKind::Endfor]
+  let body_result = p5.parse_nodes(stop_kinds)
+  let (body, p6) = match body_result {
+    Ok((ns, pp)) => (ns, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  // 7. Expect Endfor + CloseTag.
+  let end_tag_opt = p6.peek()
+  match end_tag_opt {
+    Some(t) => {
+      if t.kind == TokenKind::OpenTag {
+        let (_, p_ot) = p6.advance()
+        let endfor_opt = p_ot.peek()
+        match endfor_opt {
+          Some(et) => {
+            if et.kind == TokenKind::Endfor {
+              let (_, p_ef) = p_ot.advance()
+              let close_result2 = p_ef.expect(
+                fn(ct : Token) -> Bool { ct.kind == TokenKind::CloseTag },
+                "Expected '%}' after 'endfor'",
+              )
+              match close_result2 {
+                Ok((_, p_ok)) => Ok((For(loop_var, iterable, body), p_ok))
+                Err(msg) => Err(msg)
+              }
+            } else {
+              return Err("Expected 'endfor' to close for block")
+            }
+          }
+          None => return Err("Expected 'endfor', got EOF")
+        }
+      } else {
+        return Err("Expected '{% endfor %}' to close for block")
+      }
+    }
+    None => return Err("Expected '{% endfor %}', got EOF")
+  }
 }
 
 /// Skip tokens until `CloseTag` (`%}`) is encountered.

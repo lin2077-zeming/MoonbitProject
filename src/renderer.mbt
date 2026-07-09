@@ -129,8 +129,50 @@ pub fn Renderer::render_node(
       Ok(self)
     }
 
+    // -- For loop ----------------------------------------------------------
+    For(loop_var, iterable, body) => {
+      let iter_result = self.evaluator.eval(iterable)
+      let iter_val = match iter_result {
+        Ok(v) => v
+        Err(msg) => return Err(msg)
+      }
+      match iter_val {
+        Array(items) => {
+          let len = items.length()
+          if len == 0 {
+            return Ok(self)
+          }
+          let mut r = self
+          for i = 0; i < len; i = i + 1 {
+            // Build loop builtins.
+            let loop_obj : Map[String, Value] = Map::new()
+            loop_obj["index"] = Int((i + 1).to_int64())
+            loop_obj["index0"] = Int(i.to_int64())
+            loop_obj["first"] = Bool(i == 0)
+            loop_obj["last"] = Bool(i + 1 == len)
+            loop_obj["length"] = Int(len.to_int64())
+
+            // Create child context with loop var + loop builtins.
+            let child_ctx = Context::new_child(r.evaluator.ctx)
+              .set(loop_var, items[i])
+              .set("loop", Object(loop_obj))
+            r = { ..r, evaluator: Evaluator::new(child_ctx) }
+            let render_result = r.render_nodes(body)
+            r = match render_result {
+              Ok(rr) => rr
+              Err(msg) => return Err(msg)
+            }
+            // Restore evaluator context for next iteration
+            // (the render result contains the updated evaluator state;
+            //  we just need to keep the output buffer).
+          }
+          Ok(r)
+        }
+        _ => Err("For loop requires an array, got: " + iter_val.type_name())
+      }
+    }
+
     // -- Not implemented yet -----------------------------------------------
-    For(_, _, _) => Err("for loops not yet implemented")
     Block(_, _) => Err("blocks not yet implemented")
     Extends(_) => Err("extends not yet implemented")
     Include(_) => Err("include not yet implemented")
