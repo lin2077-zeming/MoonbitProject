@@ -6,10 +6,10 @@
 // # Quick Start
 //
 // ```
-// let tokens = tokenize("Hello, {{ name }}!")?
+// let tpl = Template::parse("Hello, {{ name }}!")?
 // let ctx = Context::new().set("name", Str("World"))
-// let parser = Parser::new(tokens)
-// let evaluator = Evaluator::new(ctx)
+// let result = tpl.render(ctx)?
+// assert_eq!(result, "Hello, World!")
 // ```
 
 ///|
@@ -21,17 +21,17 @@ pub const VERSION : String = "0.1.0"
 // ---------------------------------------------------------------------------
 //
 // Types:
-//   Token, TokenKind    — lexer tokens (lexer.mbt)
+//   Token, TokenKind      — lexer tokens (lexer.mbt)
 //   Value, Expr, Node,
 //   BinOpKind, UnaryOpKind,
-//   ElifBranch, Template — AST nodes (ast.mbt)
-//   Context             — nested-scope variable storage (context.mbt)
-//   Evaluator           — expression evaluator (evaluator.mbt)
-//   Parser              — token stream → AST parser (parser.mbt)
+//   ElifBranch             — AST nodes (ast.mbt)
+//   Context                — nested-scope variable storage (context.mbt)
+//   Evaluator              — expression evaluator (evaluator.mbt)
+//   Parser                 — token stream → AST parser (parser.mbt)
+//   Renderer               — AST → string renderer (renderer.mbt)
+//   Template               — parse + render entry point (template.mbt)
 //
-// Functions:
-//   tokenize(input)     — lexer.mbt
-//   Context::new / new_child / get / set  — context.mbt
-//   Evaluator::new / eval                 — evaluator.mbt
-//   Parser::new / parse_template / parse_expression  — parser.mbt
-//   Value::to_string / is_truthy / type_name  — ast.mbt
+// Key functions:
+//   tokenize(input) → Result[Array[Token], String]
+//   Template::parse(source) → Result[Template, String]
+//   Template::render(ctx) → Result[String, String]

@@ -143,9 +143,4 @@ pub(all) enum Node {
   FilterBlock(String, Array[Expr], Array[Node])      // {% filter name(args) %}…{% endfilter %}
 } derive(Debug)
 
-///|
-/// A compiled template — the output of parsing.
-pub(all) struct Template {
-  name : String
-  nodes : Array[Node]
-} derive(Debug)
+// Template struct is defined in template.mbt (parse + render entry point).

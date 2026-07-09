@@ -504,15 +504,122 @@ fn parse_filter_args(p : Parser) -> Result[(Array[Expr], Parser), String] {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level parse entry point
+// Top-level template parsing
 // ---------------------------------------------------------------------------
 
 ///|
-/// Parse the complete token stream into a template AST.
-///
-/// Currently returns an empty node list — the full parser will be
-/// implemented in subsequent changes.
-pub fn Parser::parse_template(self : Parser) -> Result[(Array[Node], Parser), String] {
+/// Parse the complete token stream into a list of template `Node`s.
+pub fn Parser::parse_template(
+  self : Parser
+) -> Result[(Array[Node], Parser), String] {
   let nodes : Array[Node] = Array::new()
-  Ok((nodes, self))
+  let mut p = self
+
+  while true {
+    let tok_opt = p.peek()
+    let tok = match tok_opt {
+      Some(t) => t
+      None => break
+    }
+
+    match tok.kind {
+      // -- End of input ----------------------------------------------------
+      TokenKind::Eof => break
+
+      // -- Plain text ------------------------------------------------------
+      TokenKind::Text(content) => {
+        let (_, p2) = p.advance()
+        p = p2
+        if content != "" {
+          nodes.push(Text(content))
+        }
+      }
+
+      // -- Variable output  {{ expr }} ------------------------------------
+      TokenKind::OpenVar => {
+        let (_, p2) = p.advance()
+        p = p2
+        // Parse expression inside {{ }}.
+        let expr_result = p.parse_expression(0)
+        let (expr, p3) = match expr_result {
+          Ok((e, pp)) => (e, pp)
+          Err(msg) => return Err(msg)
+        }
+        p = p3
+        // Expect CloseVar.
+        let expect_result = p.expect(
+          fn(t : Token) -> Bool { t.kind == TokenKind::CloseVar },
+          "Expected '}}'",
+        )
+        match expect_result {
+          Ok((_, p4)) => p = p4
+          Err(msg) => return Err(msg)
+        }
+        nodes.push(Output(expr))
+      }
+
+      // -- Block tag  {% ... %}  — skip for now ---------------------------
+      TokenKind::OpenTag => {
+        // Skip until CloseTag.
+        let (_, p2) = p.advance()
+        p = p2
+        let skip_result = skip_until_close_tag(p)
+        p = match skip_result {
+          Ok(pp) => pp
+          Err(msg) => return Err(msg)
+        }
+      }
+
+      // -- Comment, close tags, etc. — skip silently -----------------------
+      TokenKind::OpenComment | TokenKind::CloseComment |
+      TokenKind::CloseVar | TokenKind::CloseTag => {
+        let (_, p2) = p.advance()
+        p = p2
+      }
+
+      // -- Error tokens — propagate as parse error ------------------------
+      TokenKind::Error(msg) => {
+        let (_, p2) = p.advance()
+        p = p2
+        return Err("Lexer error: " + msg)
+      }
+
+      // -- Unexpected token ------------------------------------------------
+      _ => {
+        return Err(
+          "Unexpected token in template at line " +
+          tok.line.to_string() +
+          ", col " +
+          tok.col.to_string(),
+        )
+      }
+    }
+  }
+
+  Ok((nodes, p))
+}
+
+/// Skip tokens until `CloseTag` (`%}`) is encountered.
+fn skip_until_close_tag(p : Parser) -> Result[Parser, String] {
+  let mut pp = p
+  while true {
+    let tok_opt = pp.peek()
+    let tok = match tok_opt {
+      Some(t) => t
+      None => return Err("Unclosed block tag — expected '%}'")
+    }
+
+    match tok.kind {
+      TokenKind::CloseTag => {
+        let (_, p2) = pp.advance()
+        return Ok(p2)
+      }
+      TokenKind::Eof => return Err("Unclosed block tag — expected '%}' before end of file")
+      _ => {
+        let (_, p2) = pp.advance()
+        pp = p2
+      }
+    }
+  }
+  Err("unreachable")
 }
