@@ -155,16 +155,110 @@ test "render with member access" {
 }
 
 // =============================================================================
-// 5. Block tags are skipped (not yet implemented)
+// 5. If / elif / else
 // =============================================================================
 
-test "render with skipped if block" {
-  // {% if ... %} blocks are skipped by the parser for now.
-  let ctx = @tpl.Context::new().set("x", @tpl.Value::Bool(true))
-  let result = render_with("before{% if x %}inside{% endif %}after", ctx)
-  // Block tags and their content are skipped entirely.
-  @prelude.assert_eq!(result, "beforeafter")
+test "render if condition true" {
+  let ctx = @tpl.Context::new().set("show", @tpl.Value::Bool(true))
+  let result = render_with("{% if show %}Hello{% endif %}", ctx)
+  @prelude.assert_eq!(result, "Hello")
 }
+
+test "render if condition false" {
+  let ctx = @tpl.Context::new().set("show", @tpl.Value::Bool(false))
+  let result = render_with("{% if show %}Hello{% endif %}", ctx)
+  @prelude.assert_eq!(result, "")
+}
+
+test "render if with else true" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Bool(true))
+  let result = render_with("{% if x %}yes{% else %}no{% endif %}", ctx)
+  @prelude.assert_eq!(result, "yes")
+}
+
+test "render if with else false" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Bool(false))
+  let result = render_with("{% if x %}yes{% else %}no{% endif %}", ctx)
+  @prelude.assert_eq!(result, "no")
+}
+
+test "render if with elif" {
+  let ctx = @tpl.Context::new().set("score", @tpl.Value::Int(85L))
+  let result = render_with(
+    "{% if score >= 90 %}A{% elif score >= 80 %}B{% elif score >= 70 %}C{% else %}F{% endif %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "B")
+}
+
+test "render if with elif first branch" {
+  let ctx = @tpl.Context::new().set("score", @tpl.Value::Int(95L))
+  let result = render_with(
+    "{% if score >= 90 %}A{% elif score >= 80 %}B{% else %}F{% endif %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "A")
+}
+
+test "render if with elif else fallback" {
+  let ctx = @tpl.Context::new().set("score", @tpl.Value::Int(55L))
+  let result = render_with(
+    "{% if score >= 90 %}A{% elif score >= 80 %}B{% else %}F{% endif %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "F")
+}
+
+test "render if condition with comparison lt" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Int(3L))
+  let result = render_with("{% if x < 5 %}small{% endif %}", ctx)
+  @prelude.assert_eq!(result, "small")
+}
+
+test "render if condition with comparison gt" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Int(10L))
+  let result = render_with("{% if x > 5 %}big{% else %}small{% endif %}", ctx)
+  @prelude.assert_eq!(result, "big")
+}
+
+test "render if condition with eq" {
+  let ctx = @tpl.Context::new().set("x", @tpl.Value::Int(5L))
+  let result = render_with("{% if x == 5 %}five{% else %}not five{% endif %}", ctx)
+  @prelude.assert_eq!(result, "five")
+}
+
+test "render if with variable in body" {
+  let ctx = @tpl.Context::new()
+    .set("logged_in", @tpl.Value::Bool(true))
+    .set("name", @tpl.Value::Str("Alice"))
+  let result = render_with(
+    "{% if logged_in %}Welcome, {{ name }}!{% else %}Please log in.{% endif %}",
+    ctx,
+  )
+  @prelude.assert_eq!(result, "Welcome, Alice!")
+}
+
+test "render if with text surrounding" {
+  let ctx = @tpl.Context::new().set("flag", @tpl.Value::Bool(true))
+  let result = render_with("Before {% if flag %}ON{% endif %} After", ctx)
+  @prelude.assert_eq!(result, "Before ON After")
+}
+
+test "render if with falsy int zero" {
+  let ctx = @tpl.Context::new().set("count", @tpl.Value::Int(0L))
+  let result = render_with("{% if count %}has items{% else %}empty{% endif %}", ctx)
+  @prelude.assert_eq!(result, "empty")
+}
+
+test "render if with truthy int" {
+  let ctx = @tpl.Context::new().set("count", @tpl.Value::Int(5L))
+  let result = render_with("{% if count %}has items{% else %}empty{% endif %}", ctx)
+  @prelude.assert_eq!(result, "has items")
+}
+
+// =============================================================================
+// 6. Blocks that are still skipped
+// =============================================================================
 
 test "render with skipped for block" {
   let ctx = @tpl.Context::new()

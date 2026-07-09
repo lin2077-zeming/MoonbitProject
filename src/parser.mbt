@@ -512,6 +512,28 @@ fn parse_filter_args(p : Parser) -> Result[(Array[Expr], Parser), String] {
 pub fn Parser::parse_template(
   self : Parser
 ) -> Result[(Array[Node], Parser), String] {
+  // parse_nodes with an empty stop set (never stops except at EOF).
+  let stop : Array[TokenKind] = Array::new()
+  let result = self.parse_nodes(stop)
+  match result {
+    Ok((nodes, p)) => Ok((nodes, p))
+    Err(msg) => Err(msg)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generic body parser — parses nodes until a stop keyword
+// ---------------------------------------------------------------------------
+
+///|
+/// Parse nodes until `OpenTag` followed by one of *stop_kinds* (or EOF).
+///
+/// When a stop keyword is encountered, the `OpenTag` and keyword are NOT
+/// consumed — they remain for the caller to handle.
+fn Parser::parse_nodes(
+  self : Parser,
+  stop_kinds : Array[TokenKind]
+) -> Result[(Array[Node], Parser), String] {
   let nodes : Array[Node] = Array::new()
   let mut p = self
 
@@ -523,7 +545,6 @@ pub fn Parser::parse_template(
     }
 
     match tok.kind {
-      // -- End of input ----------------------------------------------------
       TokenKind::Eof => break
 
       // -- Plain text ------------------------------------------------------
@@ -539,14 +560,12 @@ pub fn Parser::parse_template(
       TokenKind::OpenVar => {
         let (_, p2) = p.advance()
         p = p2
-        // Parse expression inside {{ }}.
         let expr_result = p.parse_expression(0)
         let (expr, p3) = match expr_result {
           Ok((e, pp)) => (e, pp)
           Err(msg) => return Err(msg)
         }
         p = p3
-        // Expect CloseVar.
         let expect_result = p.expect(
           fn(t : Token) -> Bool { t.kind == TokenKind::CloseVar },
           "Expected '}}'",
@@ -558,14 +577,40 @@ pub fn Parser::parse_template(
         nodes.push(Output(expr))
       }
 
-      // -- Block tag  {% ... %}  — skip for now ---------------------------
+      // -- Block tag  {% ... %} — dispatch on keyword ---------------------
       TokenKind::OpenTag => {
-        // Skip until CloseTag.
         let (_, p2) = p.advance()
         p = p2
-        let skip_result = skip_until_close_tag(p)
-        p = match skip_result {
-          Ok(pp) => pp
+
+        // Peek at the keyword.
+        let keyword_opt = p.peek()
+        let keyword_tok = match keyword_opt {
+          Some(t) => t
+          None => return Err("Expected keyword after '{%', got EOF")
+        }
+
+        // Check if this is a stop keyword — if so, back out.
+        let is_stop = is_stop_keyword(keyword_tok.kind, stop_kinds)
+        if is_stop {
+          // Don't advance — let the caller handle it.
+          // But we already consumed OpenTag.  Put it back conceptually
+          // by returning the parser state BEFORE OpenTag was consumed.
+          // Simple fix: peek_at(-1) doesn't work.  Instead, we return
+          // with the parser positioned at the keyword (OpenTag consumed).
+          // The caller (parse_if_block) expects to see the keyword.
+          break
+        }
+
+        // Not a stop keyword — dispatch.
+        let dispatch_result = dispatch_block_tag(p, keyword_tok)
+        match dispatch_result {
+          Ok((opt_node, p3)) => {
+            p = p3
+            match opt_node {
+              Some(node) => nodes.push(node)
+              None => () // skipped block
+            }
+          }
           Err(msg) => return Err(msg)
         }
       }
@@ -577,7 +622,7 @@ pub fn Parser::parse_template(
         p = p2
       }
 
-      // -- Error tokens — propagate as parse error ------------------------
+      // -- Error tokens — propagate ----------------------------------------
       TokenKind::Error(msg) => {
         let (_, p2) = p.advance()
         p = p2
@@ -597,6 +642,261 @@ pub fn Parser::parse_template(
   }
 
   Ok((nodes, p))
+}
+
+// ---------------------------------------------------------------------------
+// Block tag dispatch
+// ---------------------------------------------------------------------------
+
+/// Check if *kind* is in the stop list.
+fn is_stop_keyword(kind : TokenKind, stop_kinds : Array[TokenKind]) -> Bool {
+  for k in stop_kinds {
+    if kind == k {
+      return true
+    }
+  }
+  false
+}
+
+/// Dispatch a block tag based on its keyword.
+/// Returns `(Option[Node], Parser)` — `None` means the block was skipped.
+fn dispatch_block_tag(
+  p : Parser,
+  keyword_tok : Token
+) -> Result[(Option[Node], Parser), String] {
+  match keyword_tok.kind {
+    // -- if block ---------------------------------------------------------
+    TokenKind::If => {
+      let parsed = parse_if_block(p)
+      match parsed {
+        Ok((if_node, p2)) => Ok((Some(if_node), p2))
+        Err(msg) => Err(msg)
+      }
+    }
+
+    // -- Elif / Else / Endif appearing outside if block — error ----------
+    TokenKind::Elif => Err("Unexpected 'elif' outside of if block")
+    TokenKind::Else => Err("Unexpected 'else' outside of if block")
+    TokenKind::Endif => Err("Unexpected 'endif' outside of if block")
+    TokenKind::Endfor => Err("Unexpected 'endfor' outside of for block")
+    TokenKind::Endblock => Err("Unexpected 'endblock' outside of block")
+
+    // -- For now, skip other block tags ----------------------------------
+    _ => {
+      let p2 = skip_until_close_tag(p)
+      match p2 {
+        Ok(pp) => Ok((None, pp))
+        Err(msg) => Err(msg)
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// If-block parser
+// ---------------------------------------------------------------------------
+
+/// Parse a full `{% if cond %} ... {% elif cond %} ... {% else %} ... {% endif %}`.
+///
+/// Caller has already consumed `OpenTag`.  We consume `If` and everything
+/// through `Endif` + `CloseTag`.
+fn parse_if_block(p : Parser) -> Result[(Node, Parser), String] {
+  // 1. Consume 'if' keyword.
+  let (if_tok, p1) = p.advance()
+  let _ = if_tok
+
+  // 2. Parse condition expression.
+  let cond_result = p1.parse_expression(0)
+  let (condition, p2) = match cond_result {
+    Ok((e, pp)) => (e, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  // 3. Expect CloseTag.
+  let expect_result = p2.expect(
+    fn(t : Token) -> Bool { t.kind == TokenKind::CloseTag },
+    "Expected '%}' after 'if' condition",
+  )
+  let p3 = match expect_result {
+    Ok((_, pp)) => pp
+    Err(msg) => return Err(msg)
+  }
+
+  // 4. Parse then-body until elif / else / endif.
+  let stop_kinds : Array[TokenKind] = [
+    TokenKind::Elif,
+    TokenKind::Else,
+    TokenKind::Endif,
+  ]
+  let body_result = p3.parse_nodes(stop_kinds)
+  let (then_body, p4) = match body_result {
+    Ok((ns, pp)) => (ns, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  // 5. Parse elif branches and optional else.
+  let elifs : Array[ElifBranch] = Array::new()
+  let else_body : Array[Node] = Array::new()
+  let chain_result = parse_elif_else_chain(p4, elifs, else_body)
+  let (elif_branches, else_nodes, p5) = match chain_result {
+    Ok((eb, en, pp)) => (eb, en, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  let p_final = p5
+
+  // 6. Expect Endif (the stop keyword was not consumed by parse_nodes).
+  let end_tag_opt = p_final.peek()
+  match end_tag_opt {
+    Some(t) => {
+      if t.kind == TokenKind::OpenTag {
+        // Consume OpenTag.
+        let (_, p_ot) = p_final.advance()
+        let endif_opt = p_ot.peek()
+        match endif_opt {
+          Some(et) => {
+            if et.kind == TokenKind::Endif {
+              let (_, p_if) = p_ot.advance()
+              // Expect CloseTag.
+              let close_result = p_if.expect(
+                fn(ct : Token) -> Bool { ct.kind == TokenKind::CloseTag },
+                "Expected '%}' after 'endif'",
+              )
+              match close_result {
+                Ok((_, p_ok)) => {
+                  let if_node = Node::If(
+                    condition, then_body, elif_branches, else_nodes,
+                  )
+                  return Ok((if_node, p_ok))
+                }
+                Err(msg) => return Err(msg)
+              }
+            } else {
+              return Err("Expected 'endif' to close if block")
+            }
+          }
+          None => return Err("Expected 'endif', got EOF")
+        }
+      } else {
+        return Err("Expected '{% endif %}' to close if block")
+      }
+    }
+    None => return Err("Expected '{% endif %}', got EOF")
+  }
+}
+
+/// Parse the elif / else chain after the then-body.
+///
+/// Returns `(elif_branches, else_body, parser)`.
+fn parse_elif_else_chain(
+  p : Parser,
+  elifs : Array[ElifBranch],
+  else_nodes : Array[Node]
+) -> Result[(Array[ElifBranch], Array[Node], Parser), String] {
+  let mut pp = p
+  let elif_branches = elifs
+  let mut else_body = else_nodes
+
+  while true {
+    let tok_opt = pp.peek()
+    let tok = match tok_opt {
+      Some(t) => t
+      None => break
+    }
+
+    match tok.kind {
+      // Must be OpenTag (since parse_nodes stopped here).
+      TokenKind::OpenTag => {
+        let (_, p2) = pp.advance()
+        pp = p2
+
+        // Check the keyword.
+        let kw_opt = pp.peek()
+        let kw = match kw_opt {
+          Some(t) => t
+          None => return Err("Expected keyword after '{%', got EOF")
+        }
+
+        match kw.kind {
+          // -- elif ----------------------------------------------------
+          TokenKind::Elif => {
+            let (_, p3) = pp.advance()
+            pp = p3
+            // Parse elif condition.
+            let cond_result = pp.parse_expression(0)
+            let (elif_cond, p4) = match cond_result {
+              Ok((e, ppp)) => (e, ppp)
+              Err(msg) => return Err(msg)
+            }
+            pp = p4
+            // Expect CloseTag.
+            let close_result = pp.expect(
+              fn(t : Token) -> Bool { t.kind == TokenKind::CloseTag },
+              "Expected '%}' after 'elif' condition",
+            )
+            pp = match close_result {
+              Ok((_, ppp)) => ppp
+              Err(msg) => return Err(msg)
+            }
+            // Parse elif body until elif / else / endif.
+            let stop_kinds : Array[TokenKind] = [
+              TokenKind::Elif,
+              TokenKind::Else,
+              TokenKind::Endif,
+            ]
+            let body_result = pp.parse_nodes(stop_kinds)
+            let (elif_body, p5) = match body_result {
+              Ok((ns, ppp)) => (ns, ppp)
+              Err(msg) => return Err(msg)
+            }
+            pp = p5
+            let branch = ElifBranch::{
+              condition: Option::Some(elif_cond),
+              body: elif_body,
+            }
+            elif_branches.push(branch)
+            // Loop: check for more elif / else / endif.
+          }
+
+          // -- else ----------------------------------------------------
+          TokenKind::Else => {
+            let (_, p3) = pp.advance()
+            pp = p3
+            // Expect CloseTag.
+            let close_result = pp.expect(
+              fn(t : Token) -> Bool { t.kind == TokenKind::CloseTag },
+              "Expected '%}' after 'else'",
+            )
+            pp = match close_result {
+              Ok((_, ppp)) => ppp
+              Err(msg) => return Err(msg)
+            }
+            // Parse else body until endif.
+            let stop_kinds : Array[TokenKind] = [
+              TokenKind::Endif,
+            ]
+            let body_result = pp.parse_nodes(stop_kinds)
+            let (else_nodes_parsed, p5) = match body_result {
+              Ok((ns, ppp)) => (ns, ppp)
+              Err(msg) => return Err(msg)
+            }
+            pp = p5
+            else_body = else_nodes_parsed
+            break
+          }
+
+          // -- endif ---------------------------------------------------
+          TokenKind::Endif => break
+
+          // -- Unexpected keyword --------------------------------------
+          _ => return Err("Expected 'elif', 'else', or 'endif'")
+        }
+      }
+      _ => break
+    }
+  }
+
+  Ok((elif_branches, else_body, pp))
 }
 
 /// Skip tokens until `CloseTag` (`%}`) is encountered.

@@ -94,8 +94,42 @@ pub fn Renderer::render_node(
       Ok({ ..self, output })
     }
 
+    // -- If: condition with elif / else branches ---------------------------
+    If(condition, then_body, elif_branches, else_body) => {
+      // Evaluate the main condition.
+      let eval_result = self.evaluator.eval(condition)
+      let cond_val = match eval_result {
+        Ok(v) => v
+        Err(msg) => return Err(msg)
+      }
+      if cond_val.is_truthy() {
+        return self.render_nodes(then_body)
+      }
+
+      // Try each elif branch.
+      for branch in elif_branches {
+        let branch_cond = match branch.condition {
+          Option::Some(expr) => expr
+          Option::None => continue
+        }
+        let branch_result = self.evaluator.eval(branch_cond)
+        let branch_val = match branch_result {
+          Ok(v) => v
+          Err(msg) => return Err(msg)
+        }
+        if branch_val.is_truthy() {
+          return self.render_nodes(branch.body)
+        }
+      }
+
+      // Fall through to else body.
+      if else_body.length() > 0 {
+        return self.render_nodes(else_body)
+      }
+      Ok(self)
+    }
+
     // -- Not implemented yet -----------------------------------------------
-    If(_, _, _, _) => Err("if blocks not yet implemented")
     For(_, _, _) => Err("for loops not yet implemented")
     Block(_, _) => Err("blocks not yet implemented")
     Extends(_) => Err("extends not yet implemented")
