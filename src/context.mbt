@@ -8,13 +8,26 @@
 // current (innermost) scope.
 
 // ---------------------------------------------------------------------------
+// Macro definition type
+// ---------------------------------------------------------------------------
+
+///|
+/// A macro definition — stored in the rendering context.
+pub(all) struct MacroDef {
+  name : String
+  params : Array[String]
+  body : Array[Node]
+} derive(Debug)
+
+// ---------------------------------------------------------------------------
 // Context struct
 // ---------------------------------------------------------------------------
 
 ///|
-/// A rendering context — stores variables in a nested-scope chain.
+/// A rendering context — stores variables and macros in a nested-scope chain.
 pub(all) struct Context {
   data : Map[String, Value]
+  macros : Map[String, MacroDef]
   parent : Option[Context]
 } derive(Debug)
 
@@ -27,6 +40,7 @@ pub(all) struct Context {
 pub fn Context::new() -> Context {
   {
     data: Map::new(),
+    macros: Map::new(),
     parent: Option::None,
   }
 }
@@ -36,6 +50,7 @@ pub fn Context::new() -> Context {
 pub fn Context::new_child(parent : Context) -> Context {
   {
     data: Map::new(),
+    macros: Map::new(),
     parent: Option::Some(parent),
   }
 }
@@ -57,7 +72,6 @@ fn Context::has_own(self : Context, name : String) -> Bool {
 
 ///|
 /// Look up *name* in the scope chain (current → parent → …).
-/// Returns `Option::None` when the variable is not defined in any scope.
 pub fn Context::get(self : Context, name : String) -> Option[Value] {
   if self.has_own(name) {
     Option::Some(self.data[name])
@@ -75,4 +89,30 @@ pub fn Context::set(self : Context, name : String, value : Value) -> Context {
   let data = self.data
   data[name] = value
   { ..self, data }
+}
+
+// ---------------------------------------------------------------------------
+// Macro storage
+// ---------------------------------------------------------------------------
+
+///|
+/// Register a macro definition in the current scope.
+pub fn Context::register_macro(self : Context, m : MacroDef) -> Context {
+  let macros = self.macros
+  macros[m.name] = m
+  { ..self, macros }
+}
+
+///|
+/// Look up a macro by name, walking the scope chain.
+pub fn Context::get_macro(self : Context, name : String) -> MacroDef? {
+  for key in self.macros.keys() {
+    if key == name {
+      return Some(self.macros[key])
+    }
+  }
+  match self.parent {
+    Option::Some(p) => p.get_macro(name)
+    Option::None => None
+  }
 }

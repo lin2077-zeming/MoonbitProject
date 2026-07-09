@@ -2,16 +2,7 @@
 // Released under the MIT License
 //
 // Template — top-level entry point for parsing and rendering templates.
-//
-// A `Template` wraps a compiled list of `Node`s and provides a convenient
-// `render` method that ties together lexing, parsing, and rendering.
 
-// ---------------------------------------------------------------------------
-// Template struct
-// ---------------------------------------------------------------------------
-
-///|
-/// A compiled template ready for rendering.
 pub(all) struct Template {
   nodes : Array[Node]
 } derive(Debug)
@@ -22,25 +13,19 @@ pub(all) struct Template {
 
 ///|
 /// Parse a template source string into a `Template`.
-///
-/// Internally runs the lexer and parser.
 pub fn Template::parse(source : String) -> Result[Template, String] {
-  // 1. Lex.
   let tokens_result = tokenize(source)
   let tokens = match tokens_result {
     Ok(ts) => ts
     Err(msg) => return Err("Lexer error: " + msg)
   }
-
-  // 2. Parse.
   let parser = Parser::new(tokens)
   let parse_result = parser.parse_template()
   let (nodes, _rest) = match parse_result {
     Ok((ns, pp)) => (ns, pp)
     Err(msg) => return Err("Parse error: " + msg)
   }
-  let _ = _rest  // unused parser state
-
+  let _ = _rest
   Ok({ nodes: nodes })
 }
 
@@ -49,8 +34,18 @@ pub fn Template::parse(source : String) -> Result[Template, String] {
 // ---------------------------------------------------------------------------
 
 ///|
-/// Render the template against *ctx* and return the output string.
+/// Render the template against *ctx* (uses empty loader — no includes).
 pub fn Template::render(self : Template, ctx : Context) -> Result[String, String] {
-  let renderer = Renderer::new(ctx)
+  self.render_with_loader(ctx, TemplateLoader::new())
+}
+
+///|
+/// Render the template with a specific *loader* for `{% include %}` support.
+pub fn Template::render_with_loader(
+  self : Template,
+  ctx : Context,
+  loader : TemplateLoader
+) -> Result[String, String] {
+  let renderer = Renderer::new(ctx, loader)
   renderer.render(self.nodes)
 }

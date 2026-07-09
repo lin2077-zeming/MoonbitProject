@@ -288,7 +288,41 @@ pub fn Evaluator::eval(self : Evaluator, expr : Expr) -> Result[Value, String] {
       eval_index(c, i)
     }
 
-    Call(name, _args) => Err("Function '" + name + "' not yet implemented")
+    // -- Function / macro call -------------------------------------------
+    Call(name, args) => {
+      // Check if this is a macro call.
+      let macro_opt = self.ctx.get_macro(name)
+      match macro_opt {
+        Some(m) => {
+          // Evaluate argument expressions.
+          let eval_args : Array[Value] = Array::new()
+          for arg in args {
+            let arg_val = match self.eval(arg) {
+              Ok(v) => v
+              Err(msg) => return Err(msg)
+            }
+            eval_args.push(arg_val)
+          }
+          // Create child context with parameter bindings.
+          let mut child_ctx = Context::new_child(self.ctx)
+          let param_len = m.params.length()
+          let arg_len = eval_args.length()
+          let count = if param_len < arg_len { param_len } else { arg_len }
+          for j = 0; j < count; j = j + 1 {
+            child_ctx = child_ctx.set(m.params[j], eval_args[j])
+          }
+          // Render macro body to string using a temporary renderer.
+          let temp_loader = TemplateLoader::new()
+          let temp_renderer = Renderer::new(child_ctx, temp_loader)
+          let render_result = temp_renderer.render(m.body)
+          match render_result {
+            Ok(s) => Ok(Str(s))
+            Err(msg) => Err(msg)
+          }
+        }
+        None => Err("Function '" + name + "' not found")
+      }
+    }
 
     BinOp(lhs, op, rhs) => {
       match op {

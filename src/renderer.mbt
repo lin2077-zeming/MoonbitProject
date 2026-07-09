@@ -15,6 +15,7 @@
 pub(all) struct Renderer {
   evaluator : Evaluator
   output : StringBuilder
+  loader : TemplateLoader
 }
 
 // ---------------------------------------------------------------------------
@@ -22,11 +23,12 @@ pub(all) struct Renderer {
 // ---------------------------------------------------------------------------
 
 ///|
-/// Create a new renderer with the given *ctx*.
-pub fn Renderer::new(ctx : Context) -> Renderer {
+/// Create a new renderer with the given *ctx* and *loader*.
+pub fn Renderer::new(ctx : Context, loader : TemplateLoader) -> Renderer {
   {
     evaluator: Evaluator::new(ctx),
     output: StringBuilder::new(),
+    loader: loader,
   }
 }
 
@@ -172,11 +174,38 @@ pub fn Renderer::render_node(
       }
     }
 
+    // -- Macro: register definition in context, no output ------------------
+    Macro(name, params, body) => {
+      let def = MacroDef::{ name: name, params: params, body: body }
+      let ctx = self.evaluator.ctx.register_macro(def)
+      Ok({ ..self, evaluator: Evaluator::new_with_filters(ctx, self.evaluator.filters) })
+    }
+
+    // -- Include: load + parse + render sub-template ----------------------
+    Include(tpl_name) => {
+      let source_opt = self.loader.get(tpl_name)
+      let source = match source_opt {
+        Some(s) => s
+        None => return Err("Template not found: " + tpl_name)
+      }
+      let tpl_result = Template::parse(source)
+      let tpl = match tpl_result {
+        Ok(t) => t
+        Err(msg) => return Err("Error parsing included template '" + tpl_name + "': " + msg)
+      }
+      let render_result = tpl.render_with_loader(self.evaluator.ctx, self.loader)
+      let rendered = match render_result {
+        Ok(s) => s
+        Err(msg) => return Err(msg)
+      }
+      let output = self.output
+      output.write_string(rendered)
+      Ok({ ..self, output })
+    }
+
     // -- Not implemented yet -----------------------------------------------
     Block(_, _) => Err("blocks not yet implemented")
     Extends(_) => Err("extends not yet implemented")
-    Include(_) => Err("include not yet implemented")
-    Macro(_, _, _) => Err("macros not yet implemented")
     FilterBlock(_, _, _) => Err("filter blocks not yet implemented")
   }
 }

@@ -695,14 +695,42 @@ fn dispatch_block_tag(
       }
     }
 
-    // -- Elif / Else / Endif appearing outside if block — error ----------
+    // -- macro block -------------------------------------------------------
+    TokenKind::Macro => {
+      let parsed = parse_macro_block(p)
+      match parsed {
+        Ok((macro_node, p2)) => Ok((Some(macro_node), p2))
+        Err(msg) => Err(msg)
+      }
+    }
+
+    // -- include block -----------------------------------------------------
+    TokenKind::Include => {
+      let parsed = parse_include_block(p)
+      match parsed {
+        Ok((inc_node, p2)) => Ok((Some(inc_node), p2))
+        Err(msg) => Err(msg)
+      }
+    }
+
+    // -- block / endblock / extends — skip for now ------------------------
+    TokenKind::Block | TokenKind::Endblock | TokenKind::Extends => {
+      let p2 = skip_until_close_tag(p)
+      match p2 {
+        Ok(pp) => Ok((None, pp))
+        Err(msg) => Err(msg)
+      }
+    }
+
+    // -- Elif / Else / Endif appearing outside — error --------------------
     TokenKind::Elif => Err("Unexpected 'elif' outside of if block")
     TokenKind::Else => Err("Unexpected 'else' outside of if block")
     TokenKind::Endif => Err("Unexpected 'endif' outside of if block")
     TokenKind::Endfor => Err("Unexpected 'endfor' outside of for block")
     TokenKind::Endblock => Err("Unexpected 'endblock' outside of block")
+    TokenKind::Endmacro => Err("Unexpected 'endmacro' outside of macro block")
 
-    // -- For now, skip other block tags ----------------------------------
+    // -- Other keywords — skip --------------------------------------------
     _ => {
       let p2 = skip_until_close_tag(p)
       match p2 {
@@ -1007,6 +1035,181 @@ fn parse_for_block(p : Parser) -> Result[(Node, Parser), String] {
       }
     }
     None => return Err("Expected '{% endfor %}', got EOF")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Macro-block parser
+// ---------------------------------------------------------------------------
+
+/// Parse `{% macro name(p1, p2) %} ... {% endmacro %}`.
+fn parse_macro_block(p : Parser) -> Result[(Node, Parser), String] {
+  // 1. Consume 'macro' keyword.
+  let (_, p1) = p.advance()
+
+  // 2. Read macro name.
+  let (name_tok, p2) = p1.advance()
+  let macro_name = match name_tok {
+    Some(t) => match t.kind {
+      TokenKind::Ident(n) => n
+      _ => return Err("Expected macro name after 'macro'")
+    }
+    None => return Err("Expected macro name, got EOF")
+  }
+
+  // 3. Expect '('.
+  let lparen_result = p2.expect(
+    fn(t : Token) -> Bool { t.kind == TokenKind::LParen },
+    "Expected '(' after macro name",
+  )
+  let p3 = match lparen_result {
+    Ok((_, pp)) => pp
+    Err(msg) => return Err(msg)
+  }
+
+  // 4. Parse parameter list (comma-separated Idents).
+  let params_result = parse_macro_params(p3)
+  let (params, p4) = match params_result {
+    Ok((ps, pp)) => (ps, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  // 5. Expect CloseTag.
+  let close_result = p4.expect(
+    fn(t : Token) -> Bool { t.kind == TokenKind::CloseTag },
+    "Expected '%}' after macro params",
+  )
+  let p5 = match close_result {
+    Ok((_, pp)) => pp
+    Err(msg) => return Err(msg)
+  }
+
+  // 6. Parse macro body until Endmacro.
+  let stop_kinds : Array[TokenKind] = [TokenKind::Endmacro]
+  let body_result = p5.parse_nodes(stop_kinds)
+  let (body, p6) = match body_result {
+    Ok((ns, pp)) => (ns, pp)
+    Err(msg) => return Err(msg)
+  }
+
+  // 7. Expect Endmacro + CloseTag.
+  let end_tag_opt = p6.peek()
+  match end_tag_opt {
+    Some(t) => {
+      if t.kind == TokenKind::OpenTag {
+        let (_, p_ot) = p6.advance()
+        let kw_opt = p_ot.peek()
+        match kw_opt {
+          Some(et) => {
+            if et.kind == TokenKind::Endmacro {
+              let (_, p_em) = p_ot.advance()
+              let close_result2 = p_em.expect(
+                fn(ct : Token) -> Bool { ct.kind == TokenKind::CloseTag },
+                "Expected '%}' after 'endmacro'",
+              )
+              match close_result2 {
+                Ok((_, p_ok)) => Ok((Macro(macro_name, params, body), p_ok))
+                Err(msg) => Err(msg)
+              }
+            } else {
+              return Err("Expected 'endmacro' to close macro block")
+            }
+          }
+          None => return Err("Expected 'endmacro', got EOF")
+        }
+      } else {
+        return Err("Expected '{% endmacro %}' to close macro block")
+      }
+    }
+    None => return Err("Expected '{% endmacro %}', got EOF")
+  }
+}
+
+/// Parse macro parameters: `ident, ident, ... )`.
+fn parse_macro_params(
+  p : Parser
+) -> Result[(Array[String], Parser), String] {
+  let params : Array[String] = Array::new()
+  let mut pp = p
+
+  // Check for empty param list (RParen immediately).
+  let first_opt = pp.peek()
+  match first_opt {
+    Some(t) => {
+      if t.kind == TokenKind::RParen {
+        let (_, p2) = pp.advance()
+        return Ok((params, p2))
+      }
+    }
+    None => return Err("Expected ')' after macro params, got EOF")
+  }
+
+  // Parse comma-separated identifiers.
+  while true {
+    let id_opt = pp.peek()
+    match id_opt {
+      Some(t) => match t.kind {
+        TokenKind::Ident(name) => {
+          let (_, p2) = pp.advance()
+          pp = p2
+          params.push(name)
+        }
+        _ => return Err("Expected parameter name")
+      }
+      None => return Err("Expected parameter name, got EOF")
+    }
+
+    // Check for comma or RParen.
+    let sep_opt = pp.peek()
+    match sep_opt {
+      Some(t) => {
+        if t.kind == TokenKind::RParen {
+          let (_, p2) = pp.advance()
+          return Ok((params, p2))
+        } else if t.kind == TokenKind::Comma {
+          let (_, p2) = pp.advance()
+          pp = p2
+        } else {
+          return Err("Expected ',' or ')' in macro parameter list")
+        }
+      }
+      None => return Err("Expected ',' or ')', got EOF")
+    }
+  }
+  // unreachable
+  Ok((params, pp))
+}
+
+// ---------------------------------------------------------------------------
+// Include-block parser
+// ---------------------------------------------------------------------------
+
+/// Parse `{% include "template_name" %}`.
+fn parse_include_block(p : Parser) -> Result[(Node, Parser), String] {
+  // 1. Consume 'include' keyword.
+  let (_, p1) = p.advance()
+
+  // 2. Read template name (string literal or variable).
+  let name_opt = p1.peek()
+  let (tpl_name, p2) = match name_opt {
+    Some(t) => match t.kind {
+      TokenKind::Str(s) => {
+        let (_, pp) = p1.advance()
+        (s, pp)
+      }
+      _ => return Err("Expected template name string after 'include'")
+    }
+    None => return Err("Expected template name after 'include', got EOF")
+  }
+
+  // 3. Expect CloseTag.
+  let close_result = p2.expect(
+    fn(t : Token) -> Bool { t.kind == TokenKind::CloseTag },
+    "Expected '%}' after include",
+  )
+  match close_result {
+    Ok((_, p3)) => Ok((Include(tpl_name), p3))
+    Err(msg) => Err(msg)
   }
 }
 
