@@ -1,5 +1,8 @@
 # MoonTera — A Jinja2/Tera-inspired Template Engine for MoonBit
 
+[![CI](https://github.com/lin2077-zeming/MoonbitProject/actions/workflows/ci.yml/badge.svg)](https://github.com/lin2077-zeming/MoonbitProject/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **MoonTera** is a fast, safe, and easy-to-use template rendering engine for
 [MoonBit](https://www.moonbitlang.com/), inspired by
 [Jinja2](https://jinja.palletsprojects.com/) and
@@ -268,6 +271,31 @@ match Template::parse(source) {
   }
 }
 ```
+
+## CLI Tool
+
+MoonTera includes a command-line tool for quick template rendering:
+
+```bash
+# Render a template with JSON context
+mbtemplate render "Hello, {{ name }}!" --data '{"name":"World"}'
+
+# Check template syntax
+mbtemplate check "{% if x %}ok{% endif %}"
+
+# Show version
+mbtemplate --version
+```
+
+| Command | Description |
+|---------|-------------|
+| `render "<tpl>" [--data '<json>']` | Render template with optional JSON data |
+| `check "<tpl>"` | Validate template syntax without rendering |
+| `--version` | Show version information |
+| `--help` | Show help message |
+
+The `--data` argument accepts a JSON object whose top-level keys become
+template context variables.
 
 ## Project Structure
 

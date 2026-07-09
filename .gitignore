@@ -1,6 +1,12 @@
 # MoonBit build artifacts
 target/
 .moon/
+_build/
+
+# Compiled output
+*.wasm
+*.core
+*.mi
 
 # IDE / editor
 .vscode/
@@ -24,3 +30,4 @@ node_modules/
 
 # Claude Code
 .claude/
+
