@@ -143,6 +143,11 @@ pub fn not_found_error(msg : String) -> TemplateError {
 // Source snippet extraction
 // ---------------------------------------------------------------------------
 
+/// Wrap a plain string into a TemplateError (for gradual migration).
+pub fn from_string(msg : String) -> TemplateError {
+  TemplateError::new(ErrorKind::SyntaxError, msg)
+}
+
 ///|
 /// Extract a single line from *source* for error display.
 ///

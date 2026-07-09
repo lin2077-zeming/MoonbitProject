@@ -135,6 +135,21 @@ pub fn Parser::get_errors(self : Parser) -> Array[String] {
   self.errors
 }
 
+///|
+/// Create a `TemplateError` positioned at the current token.
+pub fn Parser::make_error(
+  self : Parser,
+  kind : ErrorKind,
+  msg : String
+) -> TemplateError {
+  let tok_opt = self.peek()
+  match tok_opt {
+    Some(t) => TemplateError::new(kind, msg)
+      .with_location(loc_at(t.line, t.col))
+    None => TemplateError::new(kind, msg)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Pratt expression parser — operator precedence
 // ---------------------------------------------------------------------------

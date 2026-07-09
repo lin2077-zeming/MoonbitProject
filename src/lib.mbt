@@ -9,7 +9,6 @@
 // let tpl = Template::parse("Hello, {{ name }}!")?
 // let ctx = Context::new().set("name", Str("World"))
 // let result = tpl.render(ctx)?
-// assert_eq!(result, "Hello, World!")
 // ```
 
 ///|
@@ -21,17 +20,25 @@ pub const VERSION : String = "0.1.0"
 // ---------------------------------------------------------------------------
 //
 // Types:
-//   Token, TokenKind      — lexer tokens (lexer.mbt)
+//   Token, TokenKind           — lexer tokens (lexer.mbt)
 //   Value, Expr, Node,
 //   BinOpKind, UnaryOpKind,
-//   ElifBranch             — AST nodes (ast.mbt)
-//   Context                — nested-scope variable storage (context.mbt)
-//   Evaluator              — expression evaluator (evaluator.mbt)
-//   Parser                 — token stream → AST parser (parser.mbt)
-//   Renderer               — AST → string renderer (renderer.mbt)
-//   Template               — parse + render entry point (template.mbt)
+//   ElifBranch                  — AST nodes (ast.mbt)
+//   Context                     — nested-scope storage (context.mbt)
+//   Evaluator                   — expression evaluator (evaluator.mbt)
+//   Parser                      — token → AST parser (parser.mbt)
+//   Renderer                    — AST → string renderer (renderer.mbt)
+//   Template                    — parse + render entry (template.mbt)
+//   FilterRegistry, FilterFn    — filter system (filters.mbt)
+//   TemplateLoader              — include resolver (loader.mbt)
+//
+//   ErrorKind, SourceLocation,
+//   TemplateError              — unified error types (errors.mbt)
 //
 // Key functions:
 //   tokenize(input) → Result[Array[Token], String]
-//   Template::parse(source) → Result[Template, String]
-//   Template::render(ctx) → Result[String, String]
+//   Template::parse(source) → Result[Template, TemplateError]
+//   Template::render(ctx) → Result[String, TemplateError]
+//   Parser::make_error(kind, msg) → TemplateError
+//   TemplateError::to_string() → String (human-readable)
+//   extract_snippet(source, line) → String

@@ -191,12 +191,12 @@ pub fn Renderer::render_node(
       let tpl_result = Template::parse(source)
       let tpl = match tpl_result {
         Ok(t) => t
-        Err(msg) => return Err("Error parsing included template '" + tpl_name + "': " + msg)
+        Err(te) => return Err("Error parsing included template '" + tpl_name + "': " + te.to_string())
       }
       let render_result = tpl.render_with_loader(self.evaluator.ctx, self.loader)
       let rendered = match render_result {
         Ok(s) => s
-        Err(msg) => return Err(msg)
+        Err(te) => return Err(te.to_string())
       }
       let output = self.output
       output.write_string(rendered)
