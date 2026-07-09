@@ -7,8 +7,9 @@
 //
 // ```
 // let tokens = tokenize("Hello, {{ name }}!")?
+// let ctx = Context::new().set("name", Str("World"))
 // let parser = Parser::new(tokens)
-// let (nodes, _) = parser.parse_template()?
+// let evaluator = Evaluator::new(ctx)
 // ```
 
 ///|
@@ -19,13 +20,18 @@ pub const VERSION : String = "0.1.0"
 // Public API overview
 // ---------------------------------------------------------------------------
 //
-// Types (auto-accessible package-wide):
-//   Token, TokenKind  — from lexer.mbt
-//   Value, Expr, Node, BinOpKind, UnaryOpKind, ElifBranch, Template  — from ast.mbt
-//   Parser            — from parser.mbt
+// Types:
+//   Token, TokenKind    — lexer tokens (lexer.mbt)
+//   Value, Expr, Node,
+//   BinOpKind, UnaryOpKind,
+//   ElifBranch, Template — AST nodes (ast.mbt)
+//   Context             — nested-scope variable storage (context.mbt)
+//   Evaluator           — expression evaluator (evaluator.mbt)
+//   Parser              — token stream → AST parser (parser.mbt)
 //
 // Functions:
-//   tokenize(input) -> Result[Array[Token], String]          — lexer.mbt
-//   Parser::new(tokens) -> Parser                            — parser.mbt
-//   Parser::parse_template() -> Result[(Array[Node], Parser), String]  — parser.mbt
-//   Value::to_string() / Value::is_truthy()                  — ast.mbt
+//   tokenize(input)     — lexer.mbt
+//   Context::new / new_child / get / set  — context.mbt
+//   Evaluator::new / eval                 — evaluator.mbt
+//   Parser::new / parse_template / parse_expression  — parser.mbt
+//   Value::to_string / is_truthy / type_name  — ast.mbt
