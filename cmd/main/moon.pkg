@@ -1,0 +1,5 @@
+// import {
+//   "lin2077-zeming/MoonTera" @lib,
+// }
+
+pkgtype(kind: "executable")

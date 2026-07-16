@@ -1,0 +1,3 @@
+// MoonTera src package — core template engine implementation.
+// Built-in types (String, Int, Int64, Double, Bool, Char, Array, Buffer,
+// Map, Option, Result) are available without explicit imports.
